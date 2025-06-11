@@ -45,8 +45,7 @@ procedure  Mutex_Template is
   type Atomic_Integer is new Integer with Atomic, Volatile;
   type Atomic_Integer_Array is array (0 .. Nr_Of_Processes-1) of Atomic_Integer;
 
-  Choosing_Array : array (0 .. Nr_Of_Processes-1) of Atomic_Boolean; -- flags for the ENTRY_PROTOCOL
-  Ticket_Array : Atomic_Integer_Array; -- tickets for the ENTRY_PROTOCOL
+  Flags : Atomic_Integer_Array; -- tickets for the ENTRY_PROTOCOL
 
    --  function Find_Max (Arr : Atomic_Integer_Array) return Atomic_Integer is
    --     Max : Atomic_Integer := Arr(Arr'First);
@@ -166,6 +165,8 @@ procedure  Mutex_Template is
     Time_Stamp : Duration;
     Nr_of_Steps: Integer;
     Traces: Traces_Sequence_Type;
+    Did_I_Wait: Boolean;
+    Found_Any: Boolean;
 
     procedure Store_Trace is
     begin  
@@ -202,6 +203,8 @@ procedure  Mutex_Template is
       -- Time_Stamp of initialization
       Time_Stamp := To_Duration ( Clock - Start_Time ); -- reads global clock
       Store_Trace; -- store starting position
+      Did_I_Wait := False;
+      Flags(Process.Id) := 0;
     end Init;
     
     -- wait for initialisations of the remaining tasks:
@@ -215,22 +218,56 @@ procedure  Mutex_Template is
       delay Min_Delay+(Max_Delay-Min_Delay)*Duration(Random(G));
       -- LOCAL_SECTION - end
 
-      Change_State( ENTRY_PROTOCOL ); -- starting ENTRY_PROTOCOL
-      -- implement the ENTRY_PROTOCOL here ...
-      Choosing_Array(Process.Id) := True; -- set the flag
-      Ticket_Array(Process.Id) := 1 + Find_Max (Ticket_Array);
-      Choosing_Array(Process.Id) := False; -- reset the flag
-
-      for I in Choosing_Array'Range loop
-        while Choosing_Array(I) loop
-          delay 0.0; -- wait for the flag to be reset
-        end loop;
-        while Ticket_Array(I) /= 0 and Ticket_Array(I) < Ticket_Array(Process.Id) loop
-          delay 0.0; -- wait for the ticket to be smaller
-        end loop;
+      Change_State( Entry_Protocol_1 ); -- starting ENTRY_PROTOCOL
+      Did_I_Wait := True;
+      while Did_I_Wait = True loop
+         Did_I_Wait := False;
+         for I in Flags'Range loop
+            while Flags(I) > 2 loop
+               Did_I_Wait := True;
+               delay 0.0;
+            end loop;
+         end loop;
       end loop;
 
+      Flags(Process.Id) := 3;
+      Found_Any := False;
+      for I in Flags'Range loop
+         if Flags(I) = 1 then
+            Found_Any := True;
+            exit;
+         end if;
+      end loop;
 
+      if Found_Any = True then
+         Flags(Process.Id) := 2;
+         -- await(any flag[1..N] = 4) 
+         Found_Any := False;
+         while Found_Any = False loop
+            for I in Flags'Range loop
+               if Flags(I) = 4 then
+                  Found_Any := True;
+                  exit;
+               end if;
+            end loop;
+         end loop;
+      end if;
+      
+      Flags(Process.Id) := 4;
+      -- await(all flag[1..self-1] ∈ {0, 1})
+      --  Did_I_Wait := True;
+      --  while Did_I_Wait = True loop
+      --     Did_I_Wait := False;
+      for I in 0 .. Process.Id - 1 loop
+         while Flags(I) > 1 loop
+            --  Did_I_Wait := True;
+            delay 0.0;
+         end loop;
+      end loop;
+      --     end loop;
+      --  end loop;
+
+      
       Change_State( CRITICAL_SECTION ); -- starting CRITICAL_SECTION
 
       -- CRITICAL_SECTION - start
@@ -239,15 +276,9 @@ procedure  Mutex_Template is
 
       Change_State( EXIT_PROTOCOL ); -- starting EXIT_PROTOCOL
       -- implement the EXIT_PROTOCOL here ...
-      if Integer(Ticket_Array(Process.Id)) > Max_Ticket_Proc then
-        Max_Ticket_Proc := Integer(Ticket_Array(Process.Id)); -- remember the maximum ticket
-      end if;
-      Ticket_Array(Process.Id) := 0; -- reset the ticket
       Change_State( LOCAL_SECTION ); -- starting LOCAL_SECTION      
     end loop;
 
-    Global_Max_Ticket.setMax_Ticket( Max_Ticket_Proc ); -- set the global maximum ticket
-    
     Printer.Report( Traces );
   end Process_Task_Type;
 
