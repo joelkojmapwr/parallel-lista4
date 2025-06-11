@@ -2,9 +2,10 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Numerics.Float_Random; use Ada.Numerics.Float_Random;
 with Random_Seeds; use Random_Seeds;
 with Ada.Real_Time; use Ada.Real_Time;
+with Ada.Text_IO, Ada.Exceptions;
+use Ada.Text_IO, Ada.Exceptions;
 
 procedure  Mutex_Template is
-
 
 -- Processes 
 
@@ -39,7 +40,7 @@ procedure  Mutex_Template is
 
 -- Random seeds for the tasks' random number generators
  
-  Seeds : Seed_Array_Type( 1..Nr_Of_Processes ) := Make_Seeds( Nr_Of_Processes );
+  Seeds : Seed_Array_Type( 1 ..Nr_Of_Processes ) := Make_Seeds( Nr_Of_Processes );
 
   type Atomic_Boolean is new Boolean with Atomic, Volatile;
   type Atomic_Integer is new Integer with Atomic, Volatile;
@@ -58,11 +59,11 @@ procedure  Mutex_Template is
    --     return Max;
    --  end Find_Max;
 
-   function Trim_Image(I : Integer) return String is
-   S : constant String := Integer'Image(I);
-   begin
-      return S(S'First + 1 .. S'Last);  -- skips leading space
-   end;
+   --  function Trim_Image(I : Integer) return String is
+   --  S : constant String := Integer'Image(I);
+   --  begin
+   --     return S(S'First + 1 .. S'Last);  -- skips leading space
+   --  end;
 
 -- Types, procedures and functions
 
@@ -80,7 +81,7 @@ procedure  Mutex_Template is
     Symbol: Character;	      
   end record;	      
 
-  type Trace_Array_type is  array(0 .. Max_Steps) of Trace_Type;
+  type Trace_Array_type is  array(0 .. Max_Steps * 7) of Trace_Type;
 
   type Traces_Sequence_Type is record
     Last: Integer := -1;
@@ -114,11 +115,9 @@ procedure  Mutex_Template is
   end Printer;
   
   task body Printer is 
-  maxTicket : Integer; -- local variable for the maximum ticket
+ 
   begin
-  
-    -- Collect and print the traces
-    
+      -- Collect and print the traces  
     for I in 1 .. Nr_Of_Processes loop -- range for TESTS !!!
         accept Report( Traces : Traces_Sequence_Type ) do
           -- Put_Line("I = " & I'Image );
@@ -137,11 +136,7 @@ procedure  Mutex_Template is
     for I in Process_State'Range loop
       Put( I'Image &";" );
     end loop;
-    Put("EXTRA_LABEL;"); -- Place labels with extra info here (e.g. "MAX_TICKET=...;" for Backery).
-    Global_Max_Ticket.GetMax_Ticket( maxTicket ); -- get the global maximum ticket 
-    Put("MAX_TICKET="); -- Print the global maximum ticket
-    Put ( Trim_Image(maxTicket) );
-    Put_Line(";"); -- end of the line
+   
   end Printer;
 
 
@@ -181,6 +176,7 @@ procedure  Mutex_Template is
 
     procedure Change_State( State: Process_State ) is
     begin
+      --  Put_Line ("Process " & Integer'Image(Process.Id) & " changed to " & Process_State'Image(State) );
       Time_Stamp := To_Duration ( Clock - Start_Time ); -- reads global clock
       Process.Position.Y := Process_State'Pos( State );
       Store_Trace;
@@ -189,6 +185,7 @@ procedure  Mutex_Template is
 
   begin
     accept Init(Id: Integer; Seed: Integer; Symbol: Character) do
+      Put_Line ("Initing task" & Integer'Image(Id));
       Reset(G, Seed); 
       Process.Id := Id;
       Process.Symbol := Symbol;
@@ -218,12 +215,13 @@ procedure  Mutex_Template is
       delay Min_Delay+(Max_Delay-Min_Delay)*Duration(Random(G));
       -- LOCAL_SECTION - end
 
+      Flags(Process.Id) := 1;
       Change_State( Entry_Protocol_1 ); -- starting ENTRY_PROTOCOL
       Did_I_Wait := True;
       while Did_I_Wait = True loop
          Did_I_Wait := False;
          for I in Flags'Range loop
-            while Flags(I) > 2 loop
+            while Flags(I) > 2 and Flags(I) < 5 loop
                Did_I_Wait := True;
                delay 0.0;
             end loop;
@@ -231,35 +229,40 @@ procedure  Mutex_Template is
       end loop;
 
       Flags(Process.Id) := 3;
+      Change_State ( Entry_Protocol_3);
       Found_Any := False;
       for I in Flags'Range loop
          if Flags(I) = 1 then
             Found_Any := True;
+            --  Put_Line ("Exiting For");
             exit;
          end if;
       end loop;
 
       if Found_Any = True then
          Flags(Process.Id) := 2;
+         Change_State ( Entry_Protocol_2 );
          -- await(any flag[1..N] = 4) 
          Found_Any := False;
          while Found_Any = False loop
             for I in Flags'Range loop
                if Flags(I) = 4 then
                   Found_Any := True;
+                  --  Put_Line ("Exiting");
                   exit;
                end if;
             end loop;
          end loop;
       end if;
-      
+
       Flags(Process.Id) := 4;
+      Change_State (Entry_Protocol_4);
       -- await(all flag[1..self-1] ∈ {0, 1})
       --  Did_I_Wait := True;
       --  while Did_I_Wait = True loop
       --     Did_I_Wait := False;
       for I in 0 .. Process.Id - 1 loop
-         while Flags(I) > 1 loop
+         while Flags(I) > 1 and Flags(I) < 5 loop
             --  Did_I_Wait := True;
             delay 0.0;
          end loop;
@@ -275,11 +278,32 @@ procedure  Mutex_Template is
       -- CRITICAL_SECTION - end
 
       Change_State( EXIT_PROTOCOL ); -- starting EXIT_PROTOCOL
-      -- implement the EXIT_PROTOCOL here ...
+      if Process.Id < 14 then
+         for I in Process.Id + 1 .. Flags'Last loop
+            while Flags(I) > 1 and Flags(I) < 4 loop
+               delay 0.0;
+            end loop;
+         end loop;
+      end if;
+      Flags(Process.Id) := 0;
+
       Change_State( LOCAL_SECTION ); -- starting LOCAL_SECTION      
     end loop;
-
+    Put_Line ("Finished Steps");
+    Flags(Process.Id) := 5; 
+    -- Wait until all tasks finish
+    for I in Flags'Range loop
+      while Flags(I) < 5 loop
+         delay 0.0;
+      end loop;
+    end loop;
+    Put_Line ("Before sending report");
     Printer.Report( Traces );
+    
+    exception
+   when E : others =>
+      Put_Line("Task raised exception: " & Exception_Information(E));
+
   end Process_Task_Type;
 
 
@@ -289,15 +313,8 @@ procedure  Mutex_Template is
   Symbol : Character := 'A';
 
 begin 
-  -- Initialize Choosing_Array
-  for I in Choosing_Array'Range loop
-    Choosing_Array(I) := False;
-  end loop;
 
-  for I in Ticket_Array'Range loop
-    Ticket_Array(I) := 0; -- reset the tickets
-  end loop;
-  -- init tarvelers tasks
+  -- init tasks
   for I in Process_Tasks'Range loop
     Process_Tasks(I).Init( I, Seeds(I+1), Symbol );   -- `Seeds(I+1)` is ugly :-(
     Symbol := Character'Succ( Symbol );
