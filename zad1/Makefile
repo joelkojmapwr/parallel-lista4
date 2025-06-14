@@ -8,7 +8,7 @@ run: mutex_template
 	./mutex_template > out1
 
 show:
-	bash ../PW/bash-tools/display-travel-2.bash out1 
+	bash ../display-travel-2.bash out1 
 
 clean:
 	rm -f *.o *.ali mutex_template b~*

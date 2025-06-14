@@ -185,7 +185,7 @@ procedure  Mutex_Template is
 
   begin
     accept Init(Id: Integer; Seed: Integer; Symbol: Character) do
-      Put_Line ("Initing task" & Integer'Image(Id));
+      --  Put_Line ("Initing task" & Integer'Image(Id));
       Reset(G, Seed); 
       Process.Id := Id;
       Process.Symbol := Symbol;
@@ -289,7 +289,7 @@ procedure  Mutex_Template is
 
       Change_State( LOCAL_SECTION ); -- starting LOCAL_SECTION      
     end loop;
-    Put_Line ("Finished Steps");
+   --   Put_Line ("Finished Steps");
     Flags(Process.Id) := 5; 
     -- Wait until all tasks finish
     for I in Flags'Range loop
@@ -297,7 +297,7 @@ procedure  Mutex_Template is
          delay 0.0;
       end loop;
     end loop;
-    Put_Line ("Before sending report");
+   --   Put_Line ("Before sending report");
     Printer.Report( Traces );
     
     exception
