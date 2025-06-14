@@ -152,7 +152,7 @@ procedure  Mutex_Template is
 
     procedure Change_State( State: Process_State ) is
     begin
-      Put_Line ("Process " & Integer'Image(Process.Id) & " changed to " & Process_State'Image(State) );
+      --  Put_Line ("Process " & Integer'Image(Process.Id) & " changed to " & Process_State'Image(State) );
       Time_Stamp := To_Duration ( Clock - Start_Time ); -- reads global clock
       Process.Position.Y := Process_State'Pos( State );
       Store_Trace;
@@ -161,7 +161,7 @@ procedure  Mutex_Template is
 
   begin
     accept Init(Id: Integer; Seed: Integer; Symbol: Character) do
-      Put_Line ("Initing task" & Integer'Image(Id) & Character'Image(Symbol));
+      --  Put_Line ("Initing task" & Integer'Image(Id) & Character'Image(Symbol));
       Reset(G, Seed); 
       Process.Id := Id;
       Process.Symbol := Symbol;

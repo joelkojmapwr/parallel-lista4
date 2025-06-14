@@ -7,7 +7,7 @@ with Monitor_Package; use Monitor_Package;
 package body RW_Monitor is
    OK_to_Read, OK_to_Write: Condition;
    Readers: Integer := 0; -- ilu czytelników obecnie czyta
-   Writing: Boolean := False; -- czy ktoś obecnie pisze]
+   Writing: Boolean := False; -- czy ktoś obecnie pisze
 
    procedure Start_Read is
    begin
