@@ -1,0 +1,1 @@
+for X in $(ls *.ad?); do mv ${X} ${X,,[[:alpha:]]}; done
