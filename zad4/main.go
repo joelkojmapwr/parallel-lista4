@@ -43,5 +43,5 @@ func main() {
 	// for i, v := range processStates {
 	// 	fmt.Printf("%d: %s\n", i, v)
 	// }
-	fmt.Println("LOCAL_SECTION;ENTRY_PROTOCOL1;ENTRY_PROTOCOL2;ENTRY_PROTOCOL3;ENTRY_PROTOCOL4;CRITICAL_SECTION;EXIT_PROTOCOL;")
+	fmt.Println("LOCAL_SECTION;START;READING_ROOM;STOP;")
 }
