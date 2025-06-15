@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
-const Nr_Of_Processes int = 15
+const Nr_Of_Readers int = 10
+const Nr_Of_Writers int = 5
+const Nr_Of_Processes int = Nr_Of_Readers + Nr_Of_Writers
+
 const Min_Steps int = 10
 const Max_Steps int = 30
 

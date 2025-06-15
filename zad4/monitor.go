@@ -1,5 +1,9 @@
 package main
 
+import (
+	"container/list"
+)
+
 type responseChannel struct {
 	resp chan struct{}
 }
@@ -47,6 +51,7 @@ type Condition struct {
 	isWaitingChannel chan boolResponseChannel
 	terminateChannel chan struct{}
 	monitor          *Monitor
+	waitQueue        *list.List
 }
 
 func createCondition(monitor *Monitor) *Condition {
@@ -58,6 +63,7 @@ func createCondition(monitor *Monitor) *Condition {
 		isWaitingChannel: make(chan boolResponseChannel),
 		terminateChannel: make(chan struct{}),
 		monitor:          monitor,
+		waitQueue:        list.New(),
 	}
 }
 
@@ -77,13 +83,22 @@ func (c *Condition) run() {
 				msg.resp <- struct{}{}
 
 			case msg := <-c.waitChannel:
-				msg.resp <- struct{}{}
+				c.waitQueue.PushBack(msg.resp)
+				// msg.resp <- struct{}{}
 
 			waitLoop:
 				for {
 					select {
 					case msg := <-c.signalChannel:
 						c.myCount--
+						if c.waitQueue.Len() > 0 {
+							// Notify the first waiting goroutine
+							first := c.waitQueue.Front()
+							if first != nil {
+								c.waitQueue.Remove(first)
+								first.Value.(chan struct{}) <- struct{}{}
+							}
+						}
 						msg.resp <- struct{}{}
 						break waitLoop
 
