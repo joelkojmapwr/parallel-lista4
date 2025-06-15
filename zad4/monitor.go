@@ -37,14 +37,17 @@ type Condition struct {
 	preWaitChannel   chan responseChannel
 	waitChannel      chan responseChannel
 	isWaitingChannel chan boolResponseChannel
+	terminateChannel chan struct{}
 }
 
 func createCondition() *Condition {
 	return &Condition{
-		myCount:        0,
-		signalChannel:  make(chan responseChannel),
-		preWaitChannel: make(chan responseChannel),
-		waitChannel:    make(chan responseChannel),
+		myCount:          0,
+		signalChannel:    make(chan responseChannel),
+		preWaitChannel:   make(chan responseChannel),
+		waitChannel:      make(chan responseChannel),
+		isWaitingChannel: make(chan boolResponseChannel),
+		terminateChannel: make(chan struct{}),
 	}
 }
 
@@ -65,6 +68,7 @@ func (c *Condition) run(monitor *Monitor) {
 
 			case msg := <-c.waitChannel:
 				msg.resp <- struct{}{}
+
 			waitLoop:
 				for {
 					select {
@@ -76,8 +80,47 @@ func (c *Condition) run(monitor *Monitor) {
 					case msg := <-c.preWaitChannel:
 						c.myCount++
 						msg.resp <- struct{}{}
+					case msg := <-c.isWaitingChannel:
+						msg.resp <- true
+					case <-c.terminateChannel:
+						return
 					}
 				}
+			case msg := <-c.isWaitingChannel:
+				msg.resp <- c.myCount > 0
+			case <-c.terminateChannel:
+				return
+			}
+		} else {
+			select {
+			case msg := <-c.preWaitChannel:
+				c.myCount++
+				msg.resp <- struct{}{}
+
+			case msg := <-c.waitChannel:
+				msg.resp <- struct{}{}
+
+			waitLoop2:
+				for {
+					select {
+					case msg := <-c.signalChannel:
+						c.myCount--
+						msg.resp <- struct{}{}
+						break waitLoop2
+
+					case msg := <-c.preWaitChannel:
+						c.myCount++
+						msg.resp <- struct{}{}
+					case msg := <-c.isWaitingChannel:
+						msg.resp <- true
+					case <-c.terminateChannel:
+						return
+					}
+				}
+			case msg := <-c.isWaitingChannel:
+				msg.resp <- c.myCount > 0
+			case <-c.terminateChannel:
+				return
 			}
 		}
 	}
