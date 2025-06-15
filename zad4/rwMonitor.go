@@ -22,9 +22,9 @@ func createRWMonitor() *RWMonitor {
 }
 
 func (rw *RWMonitor) run() {
-	rw.monitor.run()
-	rw.OK_to_Read.run()
-	rw.OK_to_Write.run()
+	go rw.monitor.run()
+	go rw.OK_to_Read.run()
+	go rw.OK_to_Write.run()
 
 }
 

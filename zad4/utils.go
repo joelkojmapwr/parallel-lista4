@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -19,9 +18,7 @@ const Min_Delay float32 = 0.01
 const Max_Delay float32 = 0.15
 
 const Board_Width int = Nr_Of_Processes
-const Board_Height int = 7
-
-var Flags [Nr_Of_Processes]uint32
+const Board_Height int = 4
 
 var Start_Time = time.Now()
 
@@ -41,16 +38,13 @@ type ProcessState int
 
 const (
 	LocalSection ProcessState = iota
-	EntryProtocol1
-	EntryProtocol2
-	EntryProtocol3
-	EntryProtocol4
-	CriticalSection
-	ExitProtocol
+	Start
+	Reading_Room
+	Stop
 )
 
 func (p ProcessState) String() string {
-	return [...]string{"LocalSection", "EntryProtocol1", "EntryProtocol2", "EntryProtocol3", "EntryProtocol4", "CriticalSection", "ExitProtocol"}[p]
+	return [...]string{"LocalSection", "Start", "Reading_Room", "Stop"}[p]
 }
 
 func printer(printerChannel <-chan string, done chan<- struct{}) {
@@ -74,54 +68,14 @@ func isInArray(array []uint32, value uint32) bool {
 	return false
 }
 
-/**
- * Waits inclusive endProcessId
- */
-func awaitAll(states []uint32, startProcessId int, endProcessId int) {
-	if startProcessId > endProcessId {
-		return
-	}
-	var didWait bool = true
-	for didWait = true; didWait; {
-		didWait = false
-		for i := startProcessId; i <= endProcessId; i++ {
-			if !isInArray(states, atomic.LoadUint32(&Flags[i])) {
-				time.Sleep(0) // yield to scheduler
-				didWait = true
-			}
-		}
-	}
-}
-
-func ifAny(states []uint32, startProcessId int, endProcessId int) bool {
-	for i := startProcessId; i <= endProcessId; i++ {
-		if isInArray(states, atomic.LoadUint32(&Flags[i])) {
-			return true
-		}
-	}
-	return false
-}
-
-func awaitAny(states []uint32, startProcessId int, endProcessId int) {
-	if startProcessId > endProcessId {
-		return
-	}
-	for {
-		for i := startProcessId; i <= endProcessId; i++ {
-			if isInArray(states, atomic.LoadUint32(&Flags[i])) {
-				return
-			}
-		}
-		time.Sleep(0) // yield to scheduler
-	}
-}
-
 type Process struct {
 	id        int
 	symbol    rune
 	position  Position
 	traces    []Trace_Type
 	generator *rand.Rand
+	isReader  bool
+	rw        *RWMonitor
 }
 
 func (p *Process) changeState(newState ProcessState) {
@@ -140,11 +94,16 @@ func (p *Process) storeTrace(timestamp time.Duration) {
 	p.traces = append(p.traces, newTrace)
 }
 
-func (p *Process) initProcess(id int, seed int, symbol rune) {
+func (p *Process) initProcess(id int, seed int, symbol rune, monitor *RWMonitor) {
 	p.id = id
 	p.symbol = symbol
 	p.generator = rand.New(rand.NewSource(int64(seed)))
-
+	if symbol == 'R' {
+		p.isReader = true
+	} else {
+		p.isReader = false
+	}
+	p.rw = monitor
 	// Initialize position randomly
 	p.position.x = id                // Example randomization
 	p.position.y = int(LocalSection) // Example randomization
@@ -161,35 +120,23 @@ func (p *Process) run(printerChannel chan<- string, processWait *sync.WaitGroup)
 		delay := Min_Delay + rand.Float32()*(Max_Delay-Min_Delay)
 		time.Sleep(time.Duration(delay * float32(time.Second)))
 
-		// Simulate entry protocol
-		atomic.StoreUint32(&Flags[p.id], 1)
-		p.changeState(EntryProtocol1)
-
-		awaitAll([]uint32{0, 1, 2}, 0, Nr_Of_Processes-1)
-
-		atomic.StoreUint32(&Flags[p.id], 3)
-		p.changeState(EntryProtocol3)
-
-		if ifAny([]uint32{1}, 0, Nr_Of_Processes-1) {
-			atomic.StoreUint32(&Flags[p.id], 2)
-			p.changeState(EntryProtocol2)
-			awaitAny([]uint32{4}, 0, Nr_Of_Processes-1)
+		p.changeState(Start)
+		if p.isReader {
+			p.rw.startRead()
+			p.changeState(Reading_Room)
+			delay := Min_Delay + rand.Float32()*(Max_Delay-Min_Delay)
+			time.Sleep(time.Duration(delay * float32(time.Second)))
+			p.changeState(Stop)
+			p.rw.stopRead()
+		} else {
+			p.rw.startWrite()
+			p.changeState(Reading_Room)
+			delay := Min_Delay + rand.Float32()*(Max_Delay-Min_Delay)
+			time.Sleep(time.Duration(delay * float32(time.Second)))
+			p.changeState(Stop)
+			p.rw.stopWrite()
 		}
-		atomic.StoreUint32(&Flags[p.id], 4)
-		p.changeState(EntryProtocol4)
-		awaitAll([]uint32{0, 1}, 0, p.id-1)
 
-		p.changeState(CriticalSection)
-		// CRITICAL SECTION - start
-
-		delay = Min_Delay + rand.Float32()*(Max_Delay-Min_Delay)
-		time.Sleep(time.Duration(delay * float32(time.Second)))
-		// CRITICAL SECTION - end
-
-		p.changeState(ExitProtocol)
-		awaitAll([]uint32{0, 1, 4}, p.id+1, Nr_Of_Processes-1)
-
-		atomic.StoreUint32(&Flags[p.id], 0)
 		p.changeState(LocalSection)
 	}
 

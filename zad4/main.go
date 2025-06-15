@@ -15,11 +15,17 @@ func main() {
 
 	go printer(printerChannel, done)
 
-	startSymbol := 'A'
+	rwMonitor := createRWMonitor()
+	go rwMonitor.run()
+	defer rwMonitor.terminate()
 
 	processes := make([]Process, Nr_Of_Processes)
-	for i := 0; i < Nr_Of_Processes; i++ {
-		processes[i].initProcess(i, rand.Int(), startSymbol+int32(i))
+	for i := 0; i < Nr_Of_Readers; i++ {
+		processes[i].initProcess(i, rand.Int(), 'R', rwMonitor)
+	}
+
+	for i := 0; i < Nr_Of_Writers; i++ {
+		processes[i+Nr_Of_Readers].initProcess(i+Nr_Of_Readers, rand.Int(), 'W', rwMonitor)
 	}
 
 	for i := 0; i < Nr_Of_Processes; i++ {
