@@ -123,13 +123,22 @@ func (c *Condition) run() {
 				msg.resp <- struct{}{}
 
 			case msg := <-c.waitChannel:
-				msg.resp <- struct{}{}
+				c.waitQueue.PushBack(msg.resp)
 
 			waitLoop2:
 				for {
 					select {
 					case msg := <-c.signalChannel:
 						c.myCount--
+						if c.waitQueue.Len() > 0 {
+							// Notify the first waiting goroutine
+							first := c.waitQueue.Front()
+							if first != nil {
+								c.waitQueue.Remove(first)
+								first.Value.(chan struct{}) <- struct{}{}
+							}
+						}
+
 						msg.resp <- struct{}{}
 						break waitLoop2
 
